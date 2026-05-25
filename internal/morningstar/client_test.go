@@ -71,6 +71,54 @@ func TestLoadReportReturnsClearErrorForUnsupportedType(t *testing.T) {
 	}
 }
 
+func TestLoadReportWarnsAboutUnknownStockMappings(t *testing.T) {
+	client := testClient(func(req *http.Request) string {
+		return `[{
+			"Name":"Unknown Stock",
+			"Type":"Stock",
+			"Sector":{"SectorCode":"999"},
+			"InvestmentStyle":"42",
+			"Country":"ZZZ"
+		}]`
+	})
+
+	report, err := client.LoadReport(context.Background(), &model.Security{
+		Name: "Unknown Stock",
+		ISIN: "US0000000004",
+	}, config.Options{RetrieveStocks: true})
+	if err != nil {
+		t.Fatalf("LoadReport returned error: %v", err)
+	}
+	warnings := strings.Join(report.Warnings, "\n")
+	for _, want := range []string{
+		`Stock Sector: unknown mapping code "999"`,
+		`Stock Style: unknown mapping code "42"`,
+		`Country: unknown mapping code "ZZZ"`,
+		`Region: unknown mapping code "ZZZ"`,
+	} {
+		if !strings.Contains(warnings, want) {
+			t.Fatalf("missing warning %q in %q", want, warnings)
+		}
+	}
+}
+
+func TestInferFundAssetTypeAvoidsBroadOtherForKnownSpecialTypes(t *testing.T) {
+	cases := map[string]string{
+		"Commodities":        "Commodities",
+		"Allocation":         "Allocation",
+		"Money Market":       "Cash",
+		"Real Estate Sector": "Real Estate",
+		"Convertible Bond":   "Convertible",
+		"Alternative":        "Alternative",
+	}
+	for input, want := range cases {
+		got := inferFundAssetType(input)
+		if got[want] != 100 {
+			t.Fatalf("inferFundAssetType(%q) = %#v, want %s=100", input, got, want)
+		}
+	}
+}
+
 func testClient(response func(*http.Request) string) *Client {
 	return &Client{
 		domain: "test",

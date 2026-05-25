@@ -30,13 +30,13 @@ var Colors = []string{
 
 var AssetTypeMap = map[string]string{
 	"1":  "Stocks",
-	"2":  "Other",
+	"2":  "Preferred Stock",
 	"3":  "Bonds",
-	"4":  "Other",
+	"4":  "Convertible",
 	"5":  "Other",
-	"6":  "Other",
+	"6":  "Commodities",
 	"7":  "Cash",
-	"8":  "Other",
+	"8":  "Real Estate",
 	"99": "Not classified",
 }
 

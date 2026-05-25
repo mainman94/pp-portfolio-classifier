@@ -14,6 +14,9 @@ type Options struct {
 	InputFile       string
 	OutputFile      string
 	CSVFile         string
+	ReportFile      string
+	DryRun          bool
+	Backup          bool
 	RetrieveStocks  bool
 	EnableCrypto    bool
 	TopHoldings     int
@@ -49,6 +52,13 @@ func Parse(args []string) (Options, error) {
 
 	fs.StringVar(&opts.Domain, "d", "de", "Morningstar domain used to retrieve the auth token")
 	fs.StringVar(&opts.CSVFile, "csv", "pp_data_fetched.csv", "CSV output file for fetched classification data")
+	fs.StringVar(&opts.ReportFile, "report", "", "write a human-readable classification report to this file")
+	fs.BoolVar(&opts.DryRun, "dry-run", false, "fetch and classify without writing XML or CSV output")
+	opts.Backup = true
+	fs.BoolFunc("no_backup", "do not create a .bak file before overwriting an existing output file", func(string) error {
+		opts.Backup = false
+		return nil
+	})
 	fs.BoolVar(&opts.RetrieveStocks, "stocks", false, "retrieve classifications for individual stocks")
 	fs.BoolVar(&opts.EnableCrypto, "crypto", false, "enable crypto classification using the internal crypto catalog")
 	fs.StringVar(&topHoldings, "top_holdings", "10", "0, 10, 25, 50, 100, 1000 or 3200")
@@ -101,6 +111,8 @@ func normalizeArgs(args []string) []string {
 	boolFlags := map[string]bool{
 		"-stocks":            true,
 		"-crypto":            true,
+		"-dry-run":           true,
+		"-no_backup":         true,
 		"-bonds_in_funds":    true,
 		"-seg_bonds":         true,
 		"-country_by_region": true,
@@ -109,6 +121,7 @@ func normalizeArgs(args []string) []string {
 	valueFlags := map[string]bool{
 		"-d":            true,
 		"-csv":          true,
+		"-report":       true,
 		"-top_holdings": true,
 	}
 

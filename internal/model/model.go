@@ -21,6 +21,7 @@ type HoldingReport struct {
 	Type       string
 	FundType   string
 	Taxonomies map[string]map[string]float64
+	Warnings   []string
 }
 
 func NewHoldingReport() *HoldingReport {

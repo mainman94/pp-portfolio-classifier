@@ -128,7 +128,7 @@ func (c *Client) loadFund(ctx context.Context, token, isin string, opts config.O
 			case "3":
 				netBonds = min(1.0, value/100.0)
 			}
-			name := taxonomy.MapAssetType(code)
+			name := mapAssetType(report, code)
 			if name != "" && value > 0 {
 				report.Taxonomies["Asset Type"][name] += value
 			}
@@ -138,8 +138,8 @@ func (c *Client) loadFund(ctx context.Context, token, isin string, opts config.O
 		report.Taxonomies["Asset Type"] = inferFundAssetType(report.FundType)
 	}
 
-	addMapped(report.Taxonomies["Stock Style"], findBreakdown(data, "StyleBoxBreakdown"), taxonomy.StockStyleMap, netEquity*100.0)
-	addMapped(report.Taxonomies["Stock Sector"], findBreakdown(data, "GlobalStockSectorBreakdown"), taxonomy.StockSectorMap, netEquity*100.0)
+	addMapped(report, "Stock Style", findBreakdown(data, "StyleBoxBreakdown"), taxonomy.StockStyleMap, netEquity*100.0)
+	addMapped(report, "Stock Sector", findBreakdown(data, "GlobalStockSectorBreakdown"), taxonomy.StockSectorMap, netEquity*100.0)
 
 	if !opts.BondsInFunds {
 		netBonds = 0
@@ -147,20 +147,20 @@ func (c *Client) loadFund(ctx context.Context, token, isin string, opts config.O
 	if netBonds > 0 {
 		etfData, err := c.snapshot(ctx, token, isin, "ETFsnapshot")
 		if err == nil {
-			addMapped(report.Taxonomies["Bond Style"], findBreakdown(etfData, "BondStyleBoxBreakdown"), taxonomy.BondStyleMap, netBonds*100.0)
+			addMapped(report, "Bond Style", findBreakdown(etfData, "BondStyleBoxBreakdown"), taxonomy.BondStyleMap, netBonds*100.0)
 		}
-		addMapped(report.Taxonomies["Bond Sector"], findBreakdown(data, "GlobalBondSectorBreakdownLevel1"), taxonomy.BondSectorMap, netBonds*100.0)
+		addMapped(report, "Bond Sector", findBreakdown(data, "GlobalBondSectorBreakdownLevel1"), taxonomy.BondSectorMap, netBonds*100.0)
 	}
 
-	addGeo(report.Taxonomies["Region"], findRegionalExposure(data), taxonomy.MapRegion, netEquity*100.0)
-	addGeo(report.Taxonomies["Country"], findCountryExposure(data, "Equity"), taxonomy.MapCountry, netEquity*100.0)
+	addGeo(report, "Region", findRegionalExposure(data), taxonomy.MapRegion, netEquity*100.0)
+	addGeo(report, "Country", findCountryExposure(data, "Equity"), taxonomy.MapCountry, netEquity*100.0)
 
 	if opts.BondsInFunds && netBonds > 0 {
-		addGeo(report.Taxonomies["Region"], findCountryExposure(data, "Bond"), func(code string) string {
-			return taxonomy.BondSuffix(taxonomy.MapRegion(code), opts.SegregateBonds)
+		addGeo(report, "Region", findCountryExposure(data, "Bond"), func(code string) string {
+			return taxonomy.BondSuffix(mapRegion(report, code), opts.SegregateBonds)
 		}, netBonds*100.0)
-		addGeo(report.Taxonomies["Country"], findCountryExposure(data, "Bond"), func(code string) string {
-			return taxonomy.BondSuffix(taxonomy.MapCountry(code), opts.SegregateBonds)
+		addGeo(report, "Country", findCountryExposure(data, "Bond"), func(code string) string {
+			return taxonomy.BondSuffix(mapCountry(report, code), opts.SegregateBonds)
 		}, netBonds*100.0)
 	}
 
@@ -199,19 +199,21 @@ func (c *Client) loadStock(snapshot any, report *model.HoldingReport) {
 		return
 	}
 	item := items[0]
-	if v := taxonomy.MapAssetTypeStock(asString(item["Type"])); v != "" {
+	if v := mapAssetTypeStock(report, asString(item["Type"])); v != "" {
 		report.Taxonomies["Asset Type"][v] = 100
 	}
 	if v := asString(itemMap(item, "Sector", "SectorCode")); v != "" {
-		report.Taxonomies["Stock Sector"][mapOr(v, taxonomy.StockSectorMap)] = 100
+		report.Taxonomies["Stock Sector"][mapOrWarn(report, "Stock Sector", v, taxonomy.StockSectorMap)] = 100
 	}
 	if v := asString(item["InvestmentStyle"]); v != "" {
-		report.Taxonomies["Stock Style"][mapOr(v, taxonomy.StockStyleMap)] = 100
+		report.Taxonomies["Stock Style"][mapOrWarn(report, "Stock Style", v, taxonomy.StockStyleMap)] = 100
 	}
 	if v := asString(item["Country"]); v != "" {
-		report.Taxonomies["Country"][taxonomy.MapCountry(v)] = 100
-		report.Taxonomies["Region"][taxonomy.MapRegion(v)] = 100
-		report.Taxonomies["Country@Region"][taxonomy.MapCountry(v)] = 100
+		country := mapCountry(report, v)
+		region := mapRegion(report, v)
+		report.Taxonomies["Country"][country] = 100
+		report.Taxonomies["Region"][region] = 100
+		report.Taxonomies["Country@Region"][country] = 100
 	}
 	if v := asString(item["Name"]); v != "" {
 		report.Taxonomies["Holding"][v] = 100
@@ -272,27 +274,30 @@ func (c *Client) snapshot(ctx context.Context, token, isin, viewID string) (any,
 	return out, nil
 }
 
-func addMapped(target map[string]float64, rows []map[string]any, mapping map[string]string, scale float64) {
+func addMapped(report *model.HoldingReport, taxonomyName string, rows []map[string]any, mapping map[string]string, scale float64) {
 	for _, row := range rows {
 		code := asString(row["Type"])
 		value := asFloat(row["Value"])
-		name := mapOr(code, mapping)
+		name := mapOrWarn(report, taxonomyName, code, mapping)
 		if name == "" || value <= 0 {
 			continue
 		}
-		target[name] += value * scale / 100.0
+		report.Taxonomies[taxonomyName][name] += value * scale / 100.0
 	}
 }
 
-func addGeo(target map[string]float64, rows []map[string]any, mapper func(string) string, scale float64) {
+func addGeo(report *model.HoldingReport, taxonomyName string, rows []map[string]any, mapper func(string) string, scale float64) {
 	for _, row := range rows {
 		code := asString(row["Type"])
 		value := asFloat(row["Value"])
 		name := mapper(code)
+		if name == code {
+			addWarning(report, "%s: unknown mapping code %q", taxonomyName, code)
+		}
 		if name == "" || value <= 0 {
 			continue
 		}
-		target[name] += value * scale / 100.0
+		report.Taxonomies[taxonomyName][name] += value * scale / 100.0
 	}
 }
 
@@ -435,6 +440,66 @@ func mapOr(key string, mapping map[string]string) string {
 	return key
 }
 
+func mapOrWarn(report *model.HoldingReport, taxonomyName, key string, mapping map[string]string) string {
+	if key == "" {
+		return ""
+	}
+	if value, ok := mapping[key]; ok {
+		return value
+	}
+	addWarning(report, "%s: unknown mapping code %q", taxonomyName, key)
+	return key
+}
+
+func mapAssetType(report *model.HoldingReport, code string) string {
+	if value, ok := taxonomy.AssetTypeMap[code]; ok {
+		return value
+	}
+	if code != "" {
+		addWarning(report, "Asset Type: unknown mapping code %q", code)
+	}
+	return code
+}
+
+func mapAssetTypeStock(report *model.HoldingReport, kind string) string {
+	if value, ok := taxonomy.AssetTypeStockMap[kind]; ok {
+		return value
+	}
+	if kind != "" {
+		addWarning(report, "Asset Type: unknown stock type %q", kind)
+	}
+	return kind
+}
+
+func mapRegion(report *model.HoldingReport, code string) string {
+	value := taxonomy.MapRegion(code)
+	if value == code && code != "" {
+		addWarning(report, "Region: unknown mapping code %q", code)
+	}
+	return value
+}
+
+func mapCountry(report *model.HoldingReport, code string) string {
+	value := taxonomy.MapCountry(code)
+	if value == code && code != "" {
+		addWarning(report, "Country: unknown mapping code %q", code)
+	}
+	return value
+}
+
+func addWarning(report *model.HoldingReport, format string, args ...any) {
+	if report == nil {
+		return
+	}
+	message := fmt.Sprintf(format, args...)
+	for _, existing := range report.Warnings {
+		if existing == message {
+			return
+		}
+	}
+	report.Warnings = append(report.Warnings, message)
+}
+
 func min(a, b float64) float64 {
 	if a < b {
 		return a
@@ -475,18 +540,38 @@ func (c *Client) tryCryptoFallback(security *model.Security, opts config.Options
 }
 
 func inferFundAssetType(fundType string) map[string]float64 {
-	switch strings.TrimSpace(fundType) {
+	clean := strings.TrimSpace(fundType)
+	lower := strings.ToLower(clean)
+	switch clean {
 	case "Equity":
 		return map[string]float64{"Stocks": 100}
 	case "Fixed Income":
 		return map[string]float64{"Bonds": 100}
 	case "Commodities":
-		return map[string]float64{"Other": 100}
+		return map[string]float64{"Commodities": 100}
 	case "Miscellaneous":
-		return map[string]float64{"Other": 100}
+		return map[string]float64{"Alternative": 100}
 	case "Allocation":
-		return map[string]float64{"Stocks": 100}
+		return map[string]float64{"Allocation": 100}
 	default:
+		if strings.Contains(lower, "money market") || strings.Contains(lower, "cash") {
+			return map[string]float64{"Cash": 100}
+		}
+		if strings.Contains(lower, "real estate") || strings.Contains(lower, "property") || strings.Contains(lower, "reit") {
+			return map[string]float64{"Real Estate": 100}
+		}
+		if strings.Contains(lower, "commodity") || strings.Contains(lower, "commodities") {
+			return map[string]float64{"Commodities": 100}
+		}
+		if strings.Contains(lower, "convertible") {
+			return map[string]float64{"Convertible": 100}
+		}
+		if strings.Contains(lower, "allocation") || strings.Contains(lower, "mixed") || strings.Contains(lower, "multi asset") {
+			return map[string]float64{"Allocation": 100}
+		}
+		if strings.Contains(lower, "alternative") || strings.Contains(lower, "derivative") || strings.Contains(lower, "hedge") {
+			return map[string]float64{"Alternative": 100}
+		}
 		return map[string]float64{"Other": 100}
 	}
 }

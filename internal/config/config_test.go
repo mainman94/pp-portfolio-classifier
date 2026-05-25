@@ -12,6 +12,9 @@ func TestParseSupportsPythonStyleArgumentOrder(t *testing.T) {
 		"-stocks",
 		"-crypto",
 		"-csv", "custom.csv",
+		"-report", "report.txt",
+		"-dry-run",
+		"-no_backup",
 	})
 	if err != nil {
 		t.Fatalf("Parse returned error: %v", err)
@@ -30,6 +33,9 @@ func TestParseSupportsPythonStyleArgumentOrder(t *testing.T) {
 	}
 	if opts.CSVFile != "custom.csv" {
 		t.Fatalf("unexpected csv file: %q", opts.CSVFile)
+	}
+	if opts.ReportFile != "report.txt" || !opts.DryRun || opts.Backup {
+		t.Fatalf("unexpected report/dry-run/backup config: %+v", opts)
 	}
 }
 

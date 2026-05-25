@@ -39,6 +39,7 @@ Examples:
 ./pp-classifier Hauptmann.xml Hauptmann_fin.xml -bonds_in_funds -top_holdings 1000 -country_by_region -stocks
 ./pp-classifier Hauptmann.xml Hauptmann_fin.xml -bonds_in_funds -top_holdings 1000 -country_by_region -stocks -crypto
 ./pp-classifier portfolio.xml pp_classified.xml -csv fetched.csv
+./pp-classifier portfolio.xml pp_classified.xml -dry-run -report report.txt
 ```
 
 ## Main Flags
@@ -48,6 +49,15 @@ Examples:
 
 - `-csv <file>`
   CSV output path for fetched classification data. Default: `pp_data_fetched.csv`
+
+- `-report <file>`
+  Write a human-readable report with failures, unknown mappings, and broad `Other` classifications.
+
+- `-dry-run`
+  Fetch and classify securities, update taxonomies in memory, and optionally write `-report`, but skip XML and CSV writes.
+
+- `-no_backup`
+  Disable automatic `.bak` creation before overwriting an existing XML or CSV output file.
 
 - `-stocks`
   Enable classification for individual stocks.
@@ -72,11 +82,14 @@ Examples:
 The tool writes:
 - the classified XML output file
 - the fetched classification CSV, defaulting to `pp_data_fetched.csv` in the current working directory
+- an optional report when `-report` is set
 
 It also prints progress while running, including fetch status per security and taxonomy update steps.
+When XML or CSV output paths already exist, the previous file is copied to `<path>.bak` before overwrite unless `-no_backup` is set.
 
 ## Notes
 
 - Use a copy of your Portfolio Performance XML, not the original.
 - The input must be the classic PP XML format without `id` attributes.
 - Morningstar coverage varies by instrument, so some products may still need manual cleanup.
+- Unknown Morningstar mapping codes are preserved as raw categories and reported as warnings.
