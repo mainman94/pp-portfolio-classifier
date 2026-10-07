@@ -3,3 +3,6 @@ pp-classifier
 *.csv
 *.xml
 IMPROVEMENTS.md
+# Claude Code: only shared config is committed; settings.local.json etc. stay local.
+.claude/*
+!.claude/settings.json
